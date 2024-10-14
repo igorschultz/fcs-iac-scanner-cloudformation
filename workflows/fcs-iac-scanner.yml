@@ -1,0 +1,65 @@
+# This is a basic workflow to help you get started with Actions
+
+name: fcs-iac-scanner-cloudformation-pipeline
+
+# Controls when the workflow will run
+on: 
+  push:
+    branches: 
+      - master
+      - main
+
+permissions:
+      id-token: write
+      contents: read
+      security-events: write
+
+# A workflow run is made up of one or more jobs that can run sequentially or in parallel
+jobs:
+  # This workflow contains a single job called "build"
+  CloudFormation-Scan:
+    # The type of runner that the job will run on
+    runs-on: ubuntu-latest
+    
+    # Steps represent a sequence of tasks that will be executed as part of the job
+    steps:
+      - uses: actions/checkout@v4
+      
+      # Runs Falcon Cloud Security CLI
+      - name: Run FCS IaC Scan
+        id: fcs
+        uses: crowdstrike/fcs-action@v1.0.3
+        with:
+          falcon_client_id: ${{ secrets.FALCON_CLIENT_ID }}
+          falcon_region: 'us-1'
+          path: 'main.template.yaml'
+          project_owners: ${{ secrets.USER_EMAIL }}
+          severities: 'high,medium,low'
+          fail_on: 'high=10'
+          upload_results: true
+          report_formats: 'sarif'
+          #output_path: './scan-results'
+        env: 
+          FALCON_CLIENT_SECRET: ${{ secrets.FALCON_CLIENT_SECRET }}
+
+     # - name: Show scan results
+     #   run: |
+     #     cat *-scan-results.sarif
+
+      - name: Upload SARIF report to GitHub Code scanning
+        uses: github/codeql-action/upload-sarif@v3
+        if: steps.fcs.outputs.exit-code != 0
+        with:
+          sarif_file: "./"
+          category: crowdstrike-fcs-iac-scanner
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID}}:role/${{ secrets.ROLE_NAME }}
+          role-session-name: ${{ secrets.ROLE_NAME }}
+          aws-region: us-west-2
+
+
+
+
